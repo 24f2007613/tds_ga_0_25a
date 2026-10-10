@@ -8,7 +8,7 @@ with open(DATA_PATH) as f:
 
 CORS = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "*",
 }
 
@@ -51,6 +51,12 @@ class handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self._send(204)
+
+    def do_GET(self):
+        self._send(200, {
+            "status": "ok",
+            "usage": 'POST {"regions": ["emea","apac"], "threshold_ms": 180}',
+        })
 
     def do_POST(self):
         try:
