@@ -2,22 +2,33 @@ import json
 from pathlib import Path
 
 import numpy as np
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, Response
 from pydantic import BaseModel
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "*",
+}
+
+
+@app.middleware("http")
+async def add_cors(request: Request, call_next):
+    if request.method == "OPTIONS":
+        return Response(status_code=204, headers=CORS_HEADERS)
+    response = await call_next(request)
+    response.headers.update(CORS_HEADERS)
+    return response
+
 
 DATA = json.loads(
-    (Path(__file__).parent.parent / "q-vercel-latency.json").read_text()
+    (Path(__file__).resolve().parent.parent / "q-vercel-latency.json").read_text()
 )
+# If the file wraps the records in an object, use the first list inside it
+if isinstance(DATA, dict):
+    DATA = next(v for v in DATA.values() if isinstance(v, list))
 
 
 class Query(BaseModel):
@@ -30,6 +41,11 @@ def field(rec, *names):
         if n in rec:
             return rec[n]
     raise KeyError(names)
+
+
+@app.options("/{path:path}")
+def preflight(path: str):
+    return Response(status_code=204, headers=CORS_HEADERS)
 
 
 @app.post("/")
