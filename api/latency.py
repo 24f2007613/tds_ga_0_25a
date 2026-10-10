@@ -2,15 +2,31 @@ import json
 import os
 from http.server import BaseHTTPRequestHandler
 
-DATA_PATH = os.path.join(os.path.dirname(__file__), "q-vercel-latency.json")
-with open(DATA_PATH) as f:
-    DATA = json.load(f)
-
 CORS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "*",
+    "Access-Control-Allow-Headers": "Content-Type, *",
 }
+
+_DATA = None
+
+
+def load_data():
+    global _DATA
+    if _DATA is None:
+        here = os.path.dirname(os.path.abspath(__file__))
+        for p in (
+            os.path.join(here, "q-vercel-latency.json"),
+            os.path.join(os.getcwd(), "api", "q-vercel-latency.json"),
+            os.path.join(os.getcwd(), "q-vercel-latency.json"),
+        ):
+            if os.path.exists(p):
+                with open(p) as f:
+                    _DATA = json.load(f)
+                break
+        else:
+            raise FileNotFoundError("q-vercel-latency.json not found")
+    return _DATA
 
 
 def percentile(values, p):
@@ -22,9 +38,10 @@ def percentile(values, p):
 
 
 def compute(regions, threshold):
+    data = load_data()
     out = {}
     for r in regions:
-        rows = [d for d in DATA if d["region"] == r]
+        rows = [d for d in data if d["region"] == r]
         if not rows:
             continue
         lat = [d["latency_ms"] for d in rows]
@@ -43,11 +60,14 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(code)
         for k, v in CORS.items():
             self.send_header(k, v)
+        payload = b""
         if body is not None:
+            payload = json.dumps(body).encode()
             self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        if body is not None:
-            self.wfile.write(json.dumps(body).encode())
+        if payload:
+            self.wfile.write(payload)
 
     def do_OPTIONS(self):
         self._send(204)
@@ -66,4 +86,4 @@ class handler(BaseHTTPRequestHandler):
             threshold = payload.get("threshold_ms", 180)
             self._send(200, {"regions": compute(regions, threshold)})
         except Exception as e:
-            self._send(400, {"error": str(e)})
+            self._send(500, {"error": str(e)})
