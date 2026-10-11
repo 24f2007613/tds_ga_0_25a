@@ -7,19 +7,23 @@ from pydantic import BaseModel
 
 app = FastAPI()
 
-CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "*",
-}
-
 
 @app.middleware("http")
 async def add_cors(request: Request, call_next):
+    req_headers = request.headers.get("access-control-request-headers", "*")
+    cors = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": req_headers,
+        "Access-Control-Max-Age": "86400",
+    }
     if request.method == "OPTIONS":
-        return Response(status_code=204, headers=CORS_HEADERS)
-    response = await call_next(request)
-    response.headers.update(CORS_HEADERS)
+        return Response(status_code=204, headers=cors)
+    try:
+        response = await call_next(request)
+    except Exception:
+        response = Response("Internal error", status_code=500)
+    response.headers.update(cors)
     return response
 
 
@@ -41,11 +45,6 @@ def field(rec, *names):
         if n in rec:
             return rec[n]
     raise KeyError(names)
-
-
-@app.options("/{path:path}")
-def preflight(path: str):
-    return Response(status_code=204, headers=CORS_HEADERS)
 
 
 @app.post("/")
