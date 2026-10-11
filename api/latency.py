@@ -10,19 +10,20 @@ app = FastAPI()
 
 @app.middleware("http")
 async def add_cors(request: Request, call_next):
-    req_headers = request.headers.get("access-control-request-headers", "*")
     cors = {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": req_headers,
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": request.headers.get(
+            "access-control-request-headers", "*"
+        ),
         "Access-Control-Max-Age": "86400",
     }
     if request.method == "OPTIONS":
         return Response(status_code=204, headers=cors)
     try:
         response = await call_next(request)
-    except Exception:
-        response = Response("Internal error", status_code=500)
+    except Exception as e:
+        response = Response(str(e), status_code=500)
     response.headers.update(cors)
     return response
 
@@ -30,7 +31,6 @@ async def add_cors(request: Request, call_next):
 DATA = json.loads(
     (Path(__file__).resolve().parent.parent / "q-vercel-latency.json").read_text()
 )
-# If the file wraps the records in an object, use the first list inside it
 if isinstance(DATA, dict):
     DATA = next(v for v in DATA.values() if isinstance(v, list))
 
@@ -47,9 +47,7 @@ def field(rec, *names):
     raise KeyError(names)
 
 
-@app.post("/")
-@app.post("/api/latency")
-def latency(q: Query):
+def compute(q: Query):
     out = {}
     for region in q.regions:
         recs = [r for r in DATA if r["region"] == region]
@@ -63,4 +61,15 @@ def latency(q: Query):
             "avg_uptime": float(up.mean()),
             "breaches": int((lat > q.threshold_ms).sum()),
         }
-    return {"regions": out}
+    return out
+
+
+@app.get("/{full_path:path}")
+def ping(full_path: str):
+    return {"status": "ok"}
+
+
+@app.post("/{full_path:path}")
+def latency(full_path: str, q: Query):
+    out = compute(q)
+    return {**out, "regions": out}
