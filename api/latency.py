@@ -72,4 +72,4 @@ def ping(full_path: str):
 @app.post("/{full_path:path}")
 def latency(full_path: str, q: Query):
     out = compute(q)
-    return {**out, "regions": out}
+    return out
